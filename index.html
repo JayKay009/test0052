@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LinguaCoach</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body, #root { height: 100%; }
+  body { font-family: 'DM Sans', system-ui, sans-serif; background: #f5f0e8; color: #1a1a2e; }
+  button:active { transform: scale(0.97); opacity: 0.88; }
+  select { appearance: none; -webkit-appearance: none; }
+  @keyframes micpulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(192,57,43,0.45); }
+    50%      { box-shadow: 0 0 0 18px rgba(192,57,43,0); }
+  }
+  @keyframes ptpulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(192,57,43,0.5); }
+    50%      { box-shadow: 0 0 0 16px rgba(192,57,43,0); }
+  }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  .fade-in { animation: fadeIn 0.25s ease forwards; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────
+const CEFR_LEVELS = ["A1","A2","B1","B2","C1","C2"];
+const CEFR_COLORS = { A1:"#e05252", A2:"#d4883a", B1:"#c4960a", B2:"#2a7a52", C1:"#2c5f8a", C2:"#7d3c98" };
+const CEFR_XP     = { A1:0, A2:200, B1:500, B2:1000, C1:1800, C2:3000 };
+const CEFR_DESCS  = {
+  A1:"Beginner — Eenvoudige uitdrukkingen begrijpen en jezelf voorstellen.",
+  A2:"Elementair — Eenvoudige gesprekken voeren over bekende onderwerpen.",
+  B1:"Gemiddeld — De meeste situaties op reis aankunnen.",
+  B2:"Bovengemiddeld — Spontaan en vloeiend communiceren met moedertaalsprekers.",
+  C1:"Gevorderd — Ideeën vloeiend uitdrukken zonder te zoeken naar woorden.",
+  C2:"Taalbeheersing — Spontaan, vloeiend en nauwkeurig spreken.",
+};
+
+const PROMPTS = {
+  "nl-NL": [
+    { text:"Ik heet Anna en ik woon in Amsterdam.", translation:"My name is Anna and I live in Amsterdam.", category:"basics", level:"A1" },
+    { text:"Hoeveel kost dit brood?", translation:"How much does this bread cost?", category:"basics", level:"A1" },
+    { text:"Goedemorgen! Hoe gaat het met u?", translation:"Good morning! How are you?", category:"basics", level:"A1" },
+    { text:"Ik heb een broer en twee zussen.", translation:"I have a brother and two sisters.", category:"basics", level:"A1" },
+    { text:"Ik ga elke dag met de fiets naar mijn werk.", translation:"I cycle to work every day.", category:"daily_life", level:"A2" },
+    { text:"Gisteren ben ik naar de supermarkt gegaan.", translation:"Yesterday I went to the supermarket.", category:"perfect_tense", level:"A2" },
+    { text:"Mijn vader werkt als leraar op een middelbare school.", translation:"My father works as a teacher at a secondary school.", category:"daily_life", level:"A2" },
+    { text:"Wat doe je in je vrije tijd?", translation:"What do you do in your free time?", category:"daily_life", level:"A2" },
+    { text:"Als het morgen mooi weer is, gaan we naar het strand.", translation:"If the weather is nice tomorrow, we'll go to the beach.", category:"conditionals", level:"B1" },
+    { text:"Ik heb drie jaar Nederlands gestudeerd aan de universiteit.", translation:"I studied Dutch for three years at university.", category:"perfect_tense", level:"B1" },
+    { text:"Hoewel ik moe was, bleef ik tot het einde van het feest.", translation:"Although I was tired, I stayed until the end of the party.", category:"sentence_structure", level:"B1" },
+    { text:"Ze vroeg me of ik de vergadering had bijgewoond.", translation:"She asked me whether I had attended the meeting.", category:"indirect_speech", level:"B1" },
+    { text:"Als ik meer geld had, zou ik een groter huis kopen.", translation:"If I had more money, I would buy a bigger house.", category:"conditionals", level:"B2" },
+    { text:"Het rapport moet vóór vrijdag worden ingediend.", translation:"The report must be submitted before Friday.", category:"passive_voice", level:"B2" },
+    { text:"Hoe langer je wacht, hoe moeilijker het wordt.", translation:"The longer you wait, the more difficult it gets.", category:"comparatives", level:"B2" },
+    { text:"Ze beweerde dat ze de brief al had verstuurd.", translation:"She claimed that she had already sent the letter.", category:"indirect_speech", level:"B2" },
+    { text:"Ondanks alle inspanningen kon het project niet op tijd worden voltooid.", translation:"Despite all efforts, the project could not be completed on time.", category:"sentence_structure", level:"C1" },
+    { text:"Had ik dit van tevoren geweten, zou ik andere keuzes hebben gemaakt.", translation:"Had I known this in advance, I would have made different choices.", category:"conditionals", level:"C1" },
+    { text:"Het is te betreuren dat de vergadering zonder conclusie werd afgesloten.", translation:"It is regrettable that the meeting concluded without a resolution.", category:"formal_language", level:"C1" },
+    { text:"Hoe meer ik erover nadenk, hoe minder zeker ik ben van mijn standpunt.", translation:"The more I think about it, the less certain I am of my position.", category:"comparatives", level:"C2" },
+    { text:"De wetgeving die onlangs van kracht is geworden, heeft verstrekkende gevolgen voor de sector.", translation:"The legislation that recently came into force has far-reaching consequences for the sector.", category:"formal_language", level:"C2" },
+  ],
+  "en-GB": [
+    { text:"I have been living here for three years.", translation:"Present perfect continuous with duration.", category:"tense", level:"B1" },
+    { text:"She doesn't know whether he is coming or not.", translation:"Indirect question structure.", category:"sentence_structure", level:"B1" },
+    { text:"If I had known earlier, I would have acted differently.", translation:"Third conditional — past unreal.", category:"conditionals", level:"B2" },
+    { text:"The report needs to be submitted by Friday.", translation:"Passive voice with modal verb.", category:"passive_voice", level:"B1" },
+    { text:"By the time she arrived, the meeting had already finished.", translation:"Past perfect to show sequence.", category:"tense", level:"B2" },
+    { text:"The more you practise, the better you become.", translation:"Double comparative structure.", category:"comparatives", level:"B2" },
+    { text:"Could you let me know when you are available?", translation:"Polite indirect question.", category:"sentence_structure", level:"B1" },
+    { text:"I'm used to waking up early in the morning.", translation:"'Used to' for habits.", category:"vocabulary", level:"A2" },
+  ],
+  "es-ES": [
+    { text:"Ayer fui al mercado y compré frutas frescas.", translation:"Yesterday I went to the market and bought fresh fruit.", category:"preterite", level:"A2" },
+    { text:"Cuando era pequeño, jugaba en el parque todos los días.", translation:"When I was little, I used to play in the park every day.", category:"imperfect", level:"B1" },
+    { text:"Si tuviera más tiempo, aprendería otro idioma.", translation:"If I had more time, I would learn another language.", category:"conditionals", level:"B2" },
+    { text:"Espero que todo salga bien mañana.", translation:"I hope everything goes well tomorrow.", category:"subjunctive", level:"B1" },
+  ],
+  "fr-FR": [
+    { text:"J'aurais dû partir plus tôt ce matin.", translation:"I should have left earlier this morning.", category:"conditionals", level:"B2" },
+    { text:"Le directeur a été remplacé par son adjoint.", translation:"The director was replaced by his deputy.", category:"passive_voice", level:"B1" },
+    { text:"Plus on pratique, plus on s'améliore.", translation:"The more we practise, the more we improve.", category:"comparatives", level:"B2" },
+    { text:"Quand j'étais enfant, je lisais beaucoup.", translation:"When I was a child, I used to read a lot.", category:"imperfect", level:"A2" },
+  ],
+  "de-DE": [
+    { text:"Wenn ich Zeit hätte, würde ich mehr reisen.", translation:"If I had time, I would travel more.", category:"conditionals", level:"B2" },
+    { text:"Das Buch wurde von vielen Schülern gelesen.", translation:"The book was read by many students.", category:"passive_voice", level:"B1" },
+    { text:"Ich habe gestern meinen alten Freund getroffen.", translation:"Yesterday I met my old friend.", category:"tense", level:"A2" },
+    { text:"Je mehr man übt, desto besser wird man.", translation:"The more you practise, the better you get.", category:"comparatives", level:"B2" },
+  ],
+  "it-IT": [
+    { text:"Se avessi più soldi, viaggerei di più.", translation:"If I had more money, I would travel more.", category:"conditionals", level:"B2" },
+    { text:"Il libro è stato scritto da un famoso autore.", translation:"The book was written by a famous author.", category:"passive_voice", level:"B1" },
+    { text:"Quando ero bambino, giocavo ogni giorno.", translation:"When I was a child, I used to play every day.", category:"imperfect", level:"A2" },
+    { text:"Spero che tu stia bene.", translation:"I hope you are well.", category:"subjunctive", level:"B1" },
+  ],
+};
+
+const GRAMMAR_RULES = {
+  "nl-NL": [
+    { id:"de_het",    category:"articles",         pattern:/\bde (huis|water|kind|boek|meisje|dorp|land)\b/i,                                                      message:'Let op: "huis","water","kind","boek","meisje" zijn het-woorden.',         severity:"error",   example:'"het huis", "het kind", "het boek"' },
+    { id:"inversie",  category:"word_order",        pattern:/^(gisteren|morgen|vandaag|nu|toen|soms|vaak|altijd)\s+(ik|jij|hij|zij|wij|jullie|ze)\s+/i,            message:"Na een tijdsbepaling: werkwoord vóór het onderwerp (inversie).",           severity:"error",   example:'"Gisteren ging ik…" (niet: "Gisteren ik ging…")' },
+    { id:"hb_zijn",   category:"perfect_tense",     pattern:/\b(heb|heeft|hebben)\s+(gegaan|gekomen|gevallen|geweest|gebleven|gereden|gevlogen|gelopen)\b/i,        message:'Dit werkwoord vormt de v.t.t. met "zijn", niet "hebben".',                severity:"error",   example:'"Ik ben gegaan / gekomen / gevallen."' },
+    { id:"jij_jou",   category:"pronouns",           pattern:/\b(voor|met|van|bij|door|aan|op|in|uit|naar|over)\s+jij\b/i,                                          message:'Na een voorzetsel gebruik je "jou", niet "jij".',                          severity:"error",   example:'"Dat is voor jou." (niet: "voor jij")' },
+    { id:"adj_infl",  category:"adjectives",         pattern:/\been\s+(groot|klein|oud|nieuw|goed|slecht|lang|kort|mooi)\s+(huis|water|kind|boek|meisje)\b/i,       message:'Na "een" + onzijdig woord: geen -e uitgang op het bijvoeglijk naamwoord.',severity:"warning", example:'"een groot huis" (niet: "een grote huis")' },
+    { id:"scheidbaar",category:"separable_verbs",    pattern:/\b(opbellen|meenemen|aankomen|uitgaan|afmaken|opruimen|uitlenen|invullen)\b/i,                        message:"Scheidbaar werkwoord: het voorvoegsel gaat naar het einde van de zin.",   severity:"warning", example:'"Ik bel hem op." / "Ik maak het af."' },
+    { id:"dub_neg",   category:"negation",           pattern:/\b(niet|geen)\b.*\b(niets|niemand|nooit|nergens)\b/i,                                                 message:"Dubbele ontkenning: gebruik maar één ontkenning per zin.",                 severity:"error",   example:'"Ik heb niets gezien." (niet: "niet niets")' },
+  ],
+  "en-GB": [
+    { id:"dbl_neg",   category:"grammar",    pattern:/\b(don't|doesn't|didn't|won't|can't)\b.*\b(nothing|nobody|never|no one)\b/i, message:"Double negative detected. Use 'anything/anyone' after a negative verb.", severity:"error",   example:'"I didn\'t do anything"' },
+    { id:"a_an",      category:"articles",   pattern:/\ba ([aeiouAEIOU])/,                                                          message:'Use "an" before vowel sounds.',                                           severity:"error",   example:'"an apple", "an hour"' },
+    { id:"less_few",  category:"vocabulary", pattern:/\bless (people|students|items|cars|books|things|words)\b/i,                   message:'"Fewer" is used with countable nouns.',                                   severity:"warning", example:'"fewer people" (not "less people")' },
+    { id:"good_well", category:"vocabulary", pattern:/\b(played|performed|spoke|ran|worked)\s+(very\s+)?good\b/i,                   message:'Use "well" as an adverb to describe how an action is done.',              severity:"warning", example:'"She played well"' },
+  ],
+};
+["es-ES","fr-FR","de-DE","it-IT"].forEach(l => GRAMMAR_RULES[l] = GRAMMAR_RULES["en-GB"]);
+
+const EXERCISES = {
+  articles:[
+    { lang:"nl-NL", type:"mcq", q:'Kies het juiste lidwoord: "___ huis staat op de hoek."', opts:["de","het","een"], ans:1, explain:'"Huis" is een onzijdig (het-)woord: het huis.' },
+    { lang:"nl-NL", type:"mcq", q:'Kies: "___ auto van mijn vader is blauw."',               opts:["Het","De","Een"], ans:1, explain:'"Auto" is een de-woord: de auto.' },
+  ],
+  word_order:[
+    { lang:"nl-NL", type:"mcq", q:"Gisteren ___ naar de markt gegaan.", opts:["ik ben","ben ik","ik heb","heb ik"], ans:1, explain:"Na tijdsbepaling aan het begin: inversie (werkwoord vóór onderwerp)." },
+    { lang:"nl-NL", type:"mcq", q:"Hij vertelde me dat hij ziek ___.", opts:["was geweest","geweest was","was","is geweest"], ans:0, explain:'In een bijzin staat het werkwoord aan het einde: "was geweest".' },
+  ],
+  perfect_tense:[
+    { lang:"nl-NL", type:"mcq", q:"Ze ___ gisteren naar Parijs ___.", opts:["heeft / gegaan","is / gegaan","heeft / gereisd","is / gereisd"], ans:1, explain:'"Gaan" vormt de v.t.t. met "zijn": ze is gegaan.' },
+    { lang:"nl-NL", type:"fill", q:'Vul in: "Hij ___ (vallen) van zijn fiets."', ans:"is gevallen", explain:'"Vallen" vormt de v.t.t. met "zijn": is gevallen.' },
+  ],
+  separable_verbs:[
+    { lang:"nl-NL", type:"mcq", q:"Welke zin is correct?", opts:['"Ik opbel mijn moeder."','"Ik bel mijn moeder op."','"Opbel ik mijn moeder."'], ans:1, explain:"Scheidbare werkwoorden: voorvoegsel naar het einde van de zin." },
+  ],
+  pronouns:[
+    { lang:"nl-NL", type:"mcq", q:'Kies: "Dit cadeau is voor ___.\"', opts:["jij","je","jou","jouw"], ans:2, explain:'Na een voorzetsel gebruik je de objectsvorm "jou".' },
+  ],
+  adjectives:[
+    { lang:"nl-NL", type:"mcq", q:"Welke zin is correct?", opts:['"een grote huis"','"een groot huis"','"het grote huis"'], ans:1, explain:'Na "een" + onzijdig woord: geen -e uitgang.' },
+    { lang:"nl-NL", type:"fill", q:'Vul in: "Zij woont in ___ (oud) huis."', ans:"een oud", explain:"Onbepaald lidwoord + onzijdig woord → geen -e uitgang." },
+  ],
+  conditionals:[
+    { lang:"nl-NL", type:"mcq", q:'"Als ik meer tijd ___, zou ik meer boeken lezen."', opts:["heb","had","hebben"], ans:1, explain:"Onwerkelijke conditie: gebruik de onvoltooid verleden tijd." },
+  ],
+  negation:[
+    { lang:"nl-NL", type:"mcq", q:"Welke zin is correct?", opts:['"Ik heb niet niets gedaan."','"Ik heb niets gedaan."','"Ik heb geen niets gedaan."'], ans:1, explain:"Gebruik slechts één ontkenning per zin." },
+  ],
+  passive_voice:[
+    { lang:"nl-NL", type:"mcq", q:'"De kok bereidde het gerecht." → passief:', opts:['"Het gerecht bereidde de kok."','"Het gerecht werd door de kok bereid."','"Het gerecht is bereid."'], ans:1, explain:'Passief verleden tijd: "werd + voltooid deelwoord".' },
+  ],
+  grammar:[
+    { lang:"en-GB", type:"mcq", q:'"I didn\'t see ___ in the room."', opts:["nobody","anybody","no one","nothing"], ans:1, explain:'After a negative verb (didn\'t), use "anybody/anyone", not "nobody".' },
+  ],
+  vocabulary:[
+    { lang:"en-GB", type:"mcq", q:'"There were ___ mistakes than last time."', opts:["less","fewer","lower","smaller"], ans:1, explain:'Use "fewer" with countable nouns.' },
+  ],
+};
+
+const PLACEMENT = {
+  "nl-NL": {
+    selfOpts:["Ik ken een paar woorden en eenvoudige begroetingen.","Ik kan eenvoudige gesprekken voeren over alledaagse onderwerpen.","Ik kan de meeste onderwerpen bespreken maar maak nog fouten.","Ik spreek vloeiend en bijna zonder moeite."],
+    repeatPrompt:"Goedemorgen, ik heet Jan en ik woon in Den Haag.",
+    grammarQ:"Welke zin is correct?",
+    grammarOpts:["Gisteren ik ben naar de winkel gegaan.","Gisteren ben ik naar de winkel gegaan.","Gisteren ik ging naar de winkel."],
+    grammarAns:1,
+    freePrompt:"Beschrijf wat je gisteren hebt gedaan.",
+  },
+  "en-GB": {
+    selfOpts:["I know a few words and basic greetings.","I can hold simple conversations on everyday topics.","I can discuss most topics but still make errors.","I speak fluently in almost all situations."],
+    repeatPrompt:"Good morning, my name is Sarah and I live in Amsterdam.",
+    grammarQ:"Which sentence is correct?",
+    grammarOpts:["Yesterday I have gone to the shop.","Yesterday I went to the shop.","Yesterday I did go to the shop."],
+    grammarAns:1,
+    freePrompt:"Describe what you did yesterday.",
+  },
+  "es-ES": {
+    selfOpts:["Conozco palabras básicas.","Puedo tener conversaciones simples.","Puedo discutir la mayoría de temas.","Hablo con fluidez."],
+    repeatPrompt:"Buenos días, me llamo María y vivo en Barcelona.",
+    grammarQ:"¿Cuál es correcta?",
+    grammarOpts:["Ayer yo fui al mercado.","Ayer yo he ido al mercado.","Ayer yo iba al mercado."],
+    grammarAns:0,
+    freePrompt:"Describe lo que hiciste ayer.",
+  },
+  "fr-FR": {
+    selfOpts:["Je connais quelques mots de base.","Je peux avoir des conversations simples.","Je peux discuter de la plupart des sujets.","Je parle couramment."],
+    repeatPrompt:"Bonjour, je m'appelle Sophie et j'habite à Paris.",
+    grammarQ:"Quelle phrase est correcte ?",
+    grammarOpts:["Hier je suis allé au marché.","Hier j'ai allé au marché.","Hier j'allais au marché."],
+    grammarAns:0,
+    freePrompt:"Décrivez ce que vous avez fait hier.",
+  },
+  "de-DE": {
+    selfOpts:["Ich kenne ein paar Wörter.","Ich kann einfache Gespräche führen.","Ich kann die meisten Themen besprechen.","Ich spreche fließend."],
+    repeatPrompt:"Guten Morgen, ich heiße Klaus und ich wohne in Berlin.",
+    grammarQ:"Welcher Satz ist richtig?",
+    grammarOpts:["Gestern ich bin zum Markt gegangen.","Gestern bin ich zum Markt gegangen.","Gestern ich ging zum Markt."],
+    grammarAns:1,
+    freePrompt:"Beschreiben Sie, was Sie gestern gemacht haben.",
+  },
+  "it-IT": {
+    selfOpts:["Conosco poche parole di base.","Posso avere conversazioni semplici.","Posso discutere la maggior parte degli argomenti.","Parlo correntemente."],
+    repeatPrompt:"Buongiorno, mi chiamo Giulia e abito a Roma.",
+    grammarQ:"Quale frase è corretta?",
+    grammarOpts:["Ieri io sono andato al mercato.","Ieri io ho andato al mercato.","Ieri io andavo al mercato."],
+    grammarAns:0,
+    freePrompt:"Descrivi cosa hai fatto ieri.",
+  },
+};
+
+// ─────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────
+const STORAGE_KEY = "linguacoach_v4";
+function defaultState() {
+  return { sessions:0, totalScore:0, streak:0, lastDate:null, errorsFixed:0, totalXP:0, cefrLevel:null, weaknesses:{}, history:[], lang:"nl-NL" };
+}
+function levelFromXP(xp) { let l="A1"; for (const v of CEFR_LEVELS) { if (xp >= CEFR_XP[v]) l=v; } return l; }
+function xpForScore(s)    { return s>=90?30 : s>=75?20 : s>=60?12 : 5; }
+function analyseText(text, lang) {
+  const rules = GRAMMAR_RULES[lang] || GRAMMAR_RULES["en-GB"];
+  const issues = rules.filter(r => r.pattern.test(text));
+  if (text.trim().split(/\s+/).length < 3)
+    issues.push({ id:"short", category:"fluency", message:"Probeer in volledige zinnen te spreken voor betere oefening.", severity:"warning", example:"" });
+  return issues;
+}
+function scoreIssues(issues) { return Math.max(0, 100 - issues.reduce((s,i) => s + (i.severity==="error"?25:10), 0)); }
+function pickPrompt(lang, cefrLevel) {
+  const all = PROMPTS[lang] || PROMPTS["nl-NL"];
+  const idx = CEFR_LEVELS.indexOf(cefrLevel||"A1");
+  const eligible = all.filter(p => { const pi=CEFR_LEVELS.indexOf(p.level); return pi>=Math.max(0,idx-1) && pi<=Math.min(5,idx+1); });
+  const pool = eligible.length ? eligible : all;
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+function loadPersistedState() {
+  try { const s = localStorage.getItem(STORAGE_KEY); return s ? {...defaultState(), ...JSON.parse(s)} : defaultState(); } catch(e) { return defaultState(); }
+}
+function savePersistedState(s) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch(e) {}
+}
+
+// ─────────────────────────────────────────
+// SPEECH HOOK  — fresh instance every time
+// ─────────────────────────────────────────
+function useSpeech(lang) {
+  const [speechState, setSpeechState] = useState("idle"); // idle|requesting|listening|done|error
+  const [transcript, setTranscript]   = useState("");
+  const [errorMsg, setErrorMsg]       = useState("");
+  const recRef = useRef(null);
+
+  const start = useCallback(async () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setSpeechState("error");
+      setErrorMsg("Spraakherkenning niet beschikbaar. Gebruik Chrome op Android of Safari op iOS.");
+      return;
+    }
+    setSpeechState("requesting");
+    setTranscript("");
+    setErrorMsg("");
+
+    // Explicit getUserMedia — triggers browser permission prompt over HTTPS
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+    } catch(e) {
+      setSpeechState("error");
+      setErrorMsg("🎤 Microfoon geweigerd. Tik op het slotje in de adresbalk → Microfoon → Toestaan, en probeer opnieuw.");
+      return;
+    }
+
+    // Always a brand-new instance — reusing after end/error causes silent failure
+    const rec = new SR();
+    rec.lang = lang;
+    rec.continuous = false;
+    rec.interimResults = true;
+    recRef.current = rec;
+
+    rec.onstart  = () => setSpeechState("listening");
+    rec.onresult = (e) => {
+      let final="", interim="";
+      for (let i=e.resultIndex; i<e.results.length; i++) {
+        if (e.results[i].isFinal) final  += e.results[i][0].transcript;
+        else                       interim += e.results[i][0].transcript;
+      }
+      setTranscript(final || interim);
+      if (final) { try { rec.stop(); } catch(_){} }
+    };
+    rec.onerror  = (e) => {
+      recRef.current = null;
+      const msgs = {
+        "not-allowed": "🎤 Microfoon geweigerd. Controleer de browserinstellingen.",
+        "no-speech":   "Geen spraak gedetecteerd — tik om opnieuw te proberen.",
+        "network":     "Netwerkfout — controleer je verbinding (spraakherkenning vereist internet).",
+        "aborted":     "",
+      };
+      if (msgs[e.error] === "") { setSpeechState("idle"); }
+      else { setSpeechState("error"); setErrorMsg(msgs[e.error] ?? ("Fout: " + e.error)); }
+    };
+    rec.onend    = () => { recRef.current = null; setSpeechState(st => st==="listening" ? "done" : st); };
+
+    try { rec.start(); }
+    catch(e) { recRef.current=null; setSpeechState("error"); setErrorMsg("Kon opname niet starten — probeer opnieuw."); }
+  }, [lang]);
+
+  const stop  = useCallback(() => { if (recRef.current) { try { recRef.current.stop(); } catch(_){} recRef.current=null; } }, []);
+  const reset = useCallback(() => { stop(); setSpeechState("idle"); setTranscript(""); setErrorMsg(""); }, [stop]);
+
+  return { speechState, transcript, errorMsg, start, stop, reset };
+}
+
+// ─────────────────────────────────────────
+// ICONS
+// ─────────────────────────────────────────
+const MicIcon = ({size=32, color="white"}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-6.5 9.5A6.5 6.5 0 0 0 12 17a6.5 6.5 0 0 0 6.5-6.5H20a8 8 0 0 1-7 7.938V21h-2v-2.562A8 8 0 0 1 4 10.5h1.5z"/>
+  </svg>
+);
+
+// ─────────────────────────────────────────
+// PLACEMENT SCREEN
+// ─────────────────────────────────────────
+function Placement({ onComplete }) {
+  const [lang, setLang]           = useState("nl-NL");
+  const [step, setStep]           = useState(0);
+  const [selfScore, setSelfScore] = useState(null);
+  const [grammarChosen, setGrammarChosen] = useState(null);
+  const [grammarCorrect, setGrammarCorrect] = useState(false);
+  const speech1 = useSpeech(lang);
+  const speech3 = useSpeech(lang);
+  const pd = PLACEMENT[lang] || PLACEMENT["nl-NL"];
+  const progress = [0,25,50,75,100][Math.min(step,4)];
+
+  const LANGS = [["nl-NL","🇳🇱 Nederlands"],["en-GB","🇬🇧 English"],["es-ES","🇪🇸 Español"],["fr-FR","🇫🇷 Français"],["de-DE","🇩🇪 Deutsch"],["it-IT","🇮🇹 Italiano"]];
+
+  const finish = (skipSpeech) => {
+    const selfMap = ["A1","A2","B1","C1"];
+    const words = skipSpeech ? 0 : (speech3.transcript||"").trim().split(/\s+/).filter(w=>w.length>1).length;
+    const speechBonus = words>15?1 : words<4?-1 : 0;
+    const idx = Math.max(0, Math.min(5, CEFR_LEVELS.indexOf(selfMap[selfScore??0]) + (grammarCorrect?1:0) + speechBonus));
+    onComplete({ level: CEFR_LEVELS[idx], lang });
+  };
+
+  const MicSection = ({speech, emptyMsg}) => (
+    <div>
+      <button
+        onClick={() => speech.speechState==="listening" ? speech.stop() : speech.start()}
+        style={{ width:72, height:72, borderRadius:"50%", border:"none", cursor:"pointer",
+          background: speech.speechState==="listening" ? "#c0392b" : "#d4883a",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          margin:"18px auto 12px",
+          animation: speech.speechState==="listening" ? "ptpulse 1.2s infinite" : "none",
+          boxShadow:"0 4px 20px rgba(212,136,58,0.4)" }}>
+        <MicIcon size={28} />
+      </button>
+      <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:10, padding:"11px 14px",
+        color: (!speech.transcript && speech.speechState!=="error") ? "rgba(245,240,232,0.4)" : "#f5f0e8",
+        fontStyle: (!speech.transcript && speech.speechState!=="error") ? "italic" : "normal",
+        fontSize: (!speech.transcript && speech.speechState!=="error") ? 13 : 15,
+        minHeight:52, marginBottom:12, border:"1px solid rgba(255,255,255,0.12)", lineHeight:1.5 }}>
+        { speech.speechState==="requesting" ? "Microfoon activeren…"
+        : speech.speechState==="error"      ? speech.errorMsg
+        : speech.transcript                 ? speech.transcript
+        : speech.speechState==="listening"  ? "…"
+        : emptyMsg }
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#1a1a2e", zIndex:999, display:"flex", flexDirection:"column", overflowY:"auto" }}>
+      {/* Hero */}
+      <div style={{ padding:"40px 24px 22px", background:"linear-gradient(160deg,#1a1a2e 0%,#16213e 100%)", textAlign:"center" }}>
+        <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:30, color:"#f5f0e8", marginBottom:4 }}>
+          Lingua<span style={{color:"#f0c078"}}>Coach</span>
+        </div>
+        <div style={{ fontSize:13, color:"rgba(245,240,232,0.55)", marginBottom:20 }}>Spreek. Leer. Verbeter.</div>
+        <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent:"center", marginBottom:8 }}>
+          {LANGS.map(([code,label]) => (
+            <button key={code}
+              onClick={() => { setLang(code); speech1.reset(); speech3.reset(); }}
+              style={{ padding:"7px 13px", borderRadius:20, border: lang===code?"none":"1.5px solid rgba(255,255,255,0.2)",
+                background: lang===code?"#d4883a":"rgba(255,255,255,0.06)", color:"#f5f0e8",
+                fontSize:12, cursor:"pointer", fontWeight: lang===code?600:400, fontFamily:"inherit" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding:"20px 20px 48px", flex:1 }}>
+        {/* Progress bar */}
+        <div style={{ height:3, background:"rgba(255,255,255,0.1)", borderRadius:2, overflow:"hidden", marginBottom:24 }}>
+          <div style={{ height:"100%", width:progress+"%", background:"#d4883a", transition:"width 0.4s" }} />
+        </div>
+
+        {/* Step 0 — self-report */}
+        {step===0 && (
+          <div className="fade-in">
+            <div style={{ fontSize:10, textTransform:"uppercase", letterSpacing:1, color:"rgba(245,240,232,0.4)", marginBottom:4 }}>Stap 1 van 4</div>
+            <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:20, color:"#f5f0e8", marginBottom:6, lineHeight:1.3 }}>Hoe zou jij je niveau omschrijven?</div>
+            <div style={{ fontSize:13, color:"rgba(245,240,232,0.6)", marginBottom:18, lineHeight:1.5 }}>Dit helpt ons een startpunt te bepalen. Daarna volgt een korte spreektoets.</div>
+            {pd.selfOpts.map((opt,i) => (
+              <button key={i} onClick={() => setSelfScore(i)}
+                style={{ display:"block", width:"100%", padding:"12px 15px", borderRadius:10, marginBottom:8,
+                  border: selfScore===i ? "1.5px solid #d4883a" : "1.5px solid rgba(255,255,255,0.15)",
+                  background: selfScore===i ? "#d4883a" : "rgba(255,255,255,0.06)",
+                  color:"#f5f0e8", fontSize:14, cursor:"pointer", textAlign:"left", fontFamily:"inherit", lineHeight:1.4 }}>
+                {opt}
+              </button>
+            ))}
+            <button onClick={() => setStep(1)} disabled={selfScore===null}
+              style={{ width:"100%", padding:13, borderRadius:10, marginTop:6,
+                background: selfScore===null ? "rgba(255,255,255,0.05)" : "#d4883a",
+                border:"none", color: selfScore===null ? "rgba(255,255,255,0.3)" : "white",
+                fontSize:15, fontWeight:600, cursor: selfScore===null?"not-allowed":"pointer",
+                fontFamily:"inherit", pointerEvents: selfScore===null?"none":"auto" }}>
+              Volgende →
+            </button>
+          </div>
+        )}
+
+        {/* Step 1 — repeat sentence */}
+        {step===1 && (
+          <div className="fade-in">
+            <div style={{ fontSize:10, textTransform:"uppercase", letterSpacing:1, color:"rgba(245,240,232,0.4)", marginBottom:4 }}>Stap 2 van 4 · Uitspraak</div>
+            <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:20, color:"#f5f0e8", marginBottom:6 }}>Zeg deze zin hardop:</div>
+            <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:18, color:"#f5f0e8", fontStyle:"italic", marginBottom:18, lineHeight:1.4, padding:"12px 14px", background:"rgba(255,255,255,0.07)", borderRadius:10, border:"1px solid rgba(255,255,255,0.12)" }}>
+              "{pd.repeatPrompt}"
+            </div>
+            <MicSection speech={speech1} emptyMsg="Tik op de microfoon en spreek" />
+            <button onClick={() => setStep(2)}
+              style={{ width:"100%", padding:13, borderRadius:10, background:"#d4883a", border:"none", color:"white", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit", marginTop:4 }}>
+              Volgende →
+            </button>
+            <button onClick={() => setStep(2)}
+              style={{ width:"100%", padding:13, borderRadius:10, marginTop:7, background:"rgba(255,255,255,0.09)", border:"1.5px solid rgba(255,255,255,0.2)", color:"#f5f0e8", fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+              Sla over
+            </button>
+          </div>
+        )}
+
+        {/* Step 2 — grammar MCQ */}
+        {step===2 && (
+          <div className="fade-in">
+            <div style={{ fontSize:10, textTransform:"uppercase", letterSpacing:1, color:"rgba(245,240,232,0.4)", marginBottom:4 }}>Stap 3 van 4 · Grammatica</div>
+            <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:20, color:"#f5f0e8", marginBottom:18, lineHeight:1.3 }}>{pd.grammarQ}</div>
+            {pd.grammarOpts.map((opt,i) => {
+              const answered = grammarChosen !== null;
+              const isCorrect = i===pd.grammarAns;
+              const isChosen  = i===grammarChosen;
+              return (
+                <button key={i}
+                  onClick={() => { if (!answered) { setGrammarChosen(i); setGrammarCorrect(i===pd.grammarAns); } }}
+                  style={{ display:"block", width:"100%", padding:"12px 15px", borderRadius:10, marginBottom:8,
+                    border: answered && isCorrect ? "1.5px solid #27734a" : answered && isChosen ? "1.5px solid #c0392b" : "1.5px solid rgba(255,255,255,0.15)",
+                    background: answered && isCorrect ? "rgba(39,115,74,0.3)" : answered && isChosen ? "rgba(192,57,43,0.25)" : "rgba(255,255,255,0.06)",
+                    color:"#f5f0e8", fontSize:14, cursor: answered?"default":"pointer", textAlign:"left", fontFamily:"inherit", lineHeight:1.4 }}>
+                  {opt}
+                </button>
+              );
+            })}
+            <button onClick={() => setStep(3)} disabled={grammarChosen===null}
+              style={{ width:"100%", padding:13, borderRadius:10, marginTop:6,
+                background: grammarChosen===null?"rgba(255,255,255,0.05)":"#d4883a",
+                border:"none", color: grammarChosen===null?"rgba(255,255,255,0.3)":"white",
+                fontSize:15, fontWeight:600, cursor: grammarChosen===null?"not-allowed":"pointer",
+                fontFamily:"inherit", pointerEvents: grammarChosen===null?"none":"auto" }}>
+              Volgende →
+            </button>
+          </div>
+        )}
+
+        {/* Step 3 — free speech */}
+        {step===3 && (
+          <div className="fade-in">
+            <div style={{ fontSize:10, textTransform:"uppercase", letterSpacing:1, color:"rgba(245,240,232,0.4)", marginBottom:4 }}>Stap 4 van 4 · Vrij spreken</div>
+            <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:20, color:"#f5f0e8", marginBottom:6 }}>Beschrijf dit in een paar zinnen:</div>
+            <div style={{ fontSize:13, color:"rgba(245,240,232,0.6)", marginBottom:16, lineHeight:1.5 }}>{pd.freePrompt}</div>
+            <MicSection speech={speech3} emptyMsg="Tik op de microfoon en beschrijf" />
+            <button onClick={() => finish(false)}
+              style={{ width:"100%", padding:13, borderRadius:10, background:"#d4883a", border:"none", color:"white", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit", marginTop:4 }}>
+              Zie mijn niveau →
+            </button>
+            <button onClick={() => finish(true)}
+              style={{ width:"100%", padding:13, borderRadius:10, marginTop:7, background:"rgba(255,255,255,0.09)", border:"1.5px solid rgba(255,255,255,0.2)", color:"#f5f0e8", fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+              Sla over en gebruik zelfrapportage
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// EXERCISE CARD
+// ─────────────────────────────────────────
+function ExerciseCard({ ex, catLabel }) {
+  const [chosen, setChosen]   = useState(null);
+  const [fillVal, setFillVal] = useState("");
+  const [fillOk, setFillOk]   = useState(null);
+  const [shown, setShown]     = useState(false);
+
+  return (
+    <div style={{ background:"white", borderRadius:12, padding:15, border:"1px solid #d0c8b8", marginBottom:10, boxShadow:"0 2px 6px rgba(26,26,46,0.06)" }}>
+      <div style={{ display:"inline-block", fontSize:10, textTransform:"uppercase", letterSpacing:0.8, padding:"2px 7px", borderRadius:20, background:"#fdf4e3", color:"#d4883a", fontWeight:600, marginBottom:8 }}>
+        {catLabel}
+      </div>
+      <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:15, lineHeight:1.5, marginBottom:10 }}>{ex.q}</div>
+
+      {ex.type==="mcq" ? (
+        ex.opts.map((opt,i) => {
+          const answered = chosen!==null;
+          const st = answered ? (i===ex.ans?"correct":chosen===i?"wrong":"") : "";
+          return (
+            <button key={i} onClick={() => { if (chosen===null) { setChosen(i); setShown(true); } }}
+              style={{ display:"block", width:"100%", padding:"9px 12px", borderRadius:8, marginBottom:6,
+                border: st==="correct"?"1.5px solid #27734a":st==="wrong"?"1.5px solid #c0392b":"1.5px solid #d0c8b8",
+                background: st==="correct"?"rgba(39,115,74,0.08)":st==="wrong"?"rgba(192,57,43,0.08)":"#ede8db",
+                color: st==="correct"?"#27734a":st==="wrong"?"#c0392b":"#1a1a2e",
+                fontSize:13, cursor: answered?"default":"pointer", textAlign:"left", fontFamily:"inherit" }}>
+              {opt}
+            </button>
+          );
+        })
+      ) : (
+        <div>
+          <input value={fillVal} placeholder="Typ je antwoord…"
+            onChange={e => setFillVal(e.target.value)}
+            onKeyDown={e => { if(e.key==="Enter") { const ok=fillVal.trim().toLowerCase()===ex.ans.toLowerCase(); setFillOk(ok); if(!ok)setFillVal(""); setShown(true); } }}
+            style={{ width:"100%", padding:"9px 12px", borderRadius:8, marginBottom:8,
+              border: fillOk===null?"1.5px solid #d0c8b8":fillOk?"1.5px solid #27734a":"1.5px solid #c0392b",
+              fontSize:14, fontFamily:"inherit", background:"#ede8db", color:"#1a1a2e", outline:"none", boxSizing:"border-box" }} />
+          {fillOk===false && <div style={{ fontSize:12, color:"#d4883a", marginBottom:6 }}>Correct: {ex.ans}</div>}
+          <button onClick={() => { const ok=fillVal.trim().toLowerCase()===ex.ans.toLowerCase(); setFillOk(ok); if(!ok)setFillVal(""); setShown(true); }}
+            style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #d0c8b8", background:"#ede8db", fontSize:13, cursor:"pointer", fontFamily:"inherit", marginBottom:4 }}>
+            Controleer
+          </button>
+        </div>
+      )}
+      {shown && <div style={{ fontSize:12, color:"#7a7268", marginTop:8, padding:"7px 11px", background:"#fdf4e3", borderRadius:6, lineHeight:1.5 }}>{ex.explain}</div>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// MAIN APP
+// ─────────────────────────────────────────
+function App() {
+  const [state, setState]   = useState(loadPersistedState);
+  const [tab, setTab]       = useState("practice");
+  const [prompt, setPrompt] = useState(null);
+  const [showHint, setShowHint] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const lang = state.lang || "nl-NL";
+  const speech = useSpeech(lang);
+
+  const save = useCallback(ns => { setState(ns); savePersistedState(ns); }, []);
+
+  useEffect(() => {
+    if (state.cefrLevel && !prompt) setPrompt(pickPrompt(lang, state.cefrLevel));
+  }, [state.cefrLevel]);
+
+  const handlePlacementComplete = ({ level, lang: newLang }) => {
+    const ns = { ...defaultState(), cefrLevel: level, totalXP: CEFR_XP[level]+50, lang: newLang };
+    save(ns);
+    setPrompt(pickPrompt(newLang, level));
+  };
+
+  const newPrompt = useCallback(() => {
+    speech.reset(); setFeedback(null); setShowHint(false);
+    setPrompt(pickPrompt(lang, state.cefrLevel));
+  }, [lang, state.cefrLevel, speech]);
+
+  const checkSpeech = () => {
+    const text = speech.transcript; if (!text.trim()) return;
+    const issues = analyseText(text, lang);
+    const score  = scoreIssues(issues);
+    const xp     = xpForScore(score);
+    const newXP  = (state.totalXP||0) + xp;
+    const newLevel = levelFromXP(newXP);
+    const leveledUp = newLevel !== state.cefrLevel;
+    const today = new Date().toDateString();
+    const yesterday = new Date(Date.now()-86400000).toDateString();
+    const ns = {
+      ...state,
+      sessions:     state.sessions+1,
+      totalScore:   state.totalScore+score,
+      totalXP:      newXP,
+      cefrLevel:    newLevel,
+      errorsFixed:  state.errorsFixed + (!issues.some(i=>i.severity==="error")?1:0),
+      streak:       state.lastDate===today ? state.streak : state.lastDate===yesterday ? state.streak+1 : 1,
+      lastDate:     today,
+      weaknesses:   issues.reduce((w,i) => { w[i.category]={count:(w[i.category]?.count||0)+1}; return {...w}; }, {...state.weaknesses}),
+      history:      [{date:new Date().toLocaleDateString("nl-NL"),score,xp,errors:issues.length,lang},...(state.history||[])].slice(0,30),
+    };
+    save(ns);
+    setFeedback({ issues, score, xp, leveledUp, newLevel });
+  };
+
+  if (!state.cefrLevel) return <Placement onComplete={handlePlacementComplete} />;
+
+  // Progress helpers
+  const level  = state.cefrLevel || "A1";
+  const xp     = state.totalXP || 0;
+  const lidx   = CEFR_LEVELS.indexOf(level);
+  const nextLvl = CEFR_LEVELS[lidx+1];
+  const xpInto = xp - CEFR_XP[level];
+  const xpNeed = nextLvl ? CEFR_XP[nextLvl]-CEFR_XP[level] : 1000;
+  const xpPct  = Math.min(100, Math.round((xpInto/xpNeed)*100));
+  const weakEntries = Object.entries(state.weaknesses||{}).sort((a,b)=>b[1].count-a[1].count);
+  const exCats = weakEntries.slice(0,3).map(([c])=>c);
+  const fallbackCats = ["articles","word_order","perfect_tense"];
+  const renderCats = exCats.length ? exCats : fallbackCats;
+
+  const micBg = speech.speechState==="listening" ? "#c0392b" : speech.speechState==="requesting" ? "#d4883a" : "#1a1a2e";
+  const micAnim = speech.speechState==="listening" ? "micpulse 1.4s infinite" : "none";
+
+  const levelTagStyle = (lv) => ({ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:8, background:CEFR_COLORS[lv]||"#999", color:lv==="B1"?"#1a1a2e":"white" });
+
+  return (
+    <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif", background:"#f5f0e8", minHeight:"100vh", color:"#1a1a2e", paddingBottom:80 }}>
+
+      {/* ── HEADER ── */}
+      <div style={{ background:"#1a1a2e", color:"#f5f0e8", padding:"13px 16px", position:"sticky", top:0, zIndex:100, display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 2px 12px rgba(26,26,46,0.18)" }}>
+        <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:20, letterSpacing:-0.5 }}>
+          Lingua<span style={{color:"#f0c078"}}>Coach</span>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+          <button onClick={() => setTab("progress")}
+            style={{ fontSize:12, fontWeight:700, padding:"3px 10px", borderRadius:12, background:CEFR_COLORS[level]||"#d4883a", color:level==="B1"?"#1a1a2e":"white", border:"none", cursor:"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+            {level}
+          </button>
+          <select value={lang}
+            onChange={e => { save({...state, lang:e.target.value}); speech.reset(); setFeedback(null); setShowHint(false); setPrompt(pickPrompt(e.target.value, state.cefrLevel)); }}
+            style={{ background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.22)", borderRadius:20, padding:"4px 10px", color:"#f5f0e8", fontSize:12, cursor:"pointer", fontFamily:"inherit", outline:"none" }}>
+            <option value="nl-NL">🇳🇱 NL</option>
+            <option value="en-GB">🇬🇧 EN</option>
+            <option value="es-ES">🇪🇸 ES</option>
+            <option value="fr-FR">🇫🇷 FR</option>
+            <option value="de-DE">🇩🇪 DE</option>
+            <option value="it-IT">🇮🇹 IT</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ── NAV ── */}
+      <div style={{ display:"flex", background:"#ede8db", borderBottom:"1px solid #d0c8b8", position:"sticky", top:49, zIndex:99 }}>
+        {[["practice","🎙 Oefenen"],["exercises","✏️ Opdrachten"],["progress","📊 Voortgang"]].map(([t,label]) => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ flex:1, padding:"11px 5px", textAlign:"center", fontSize:11, fontWeight:600,
+              color: tab===t?"#d4883a":"#7a7268", background:"none", border:"none",
+              borderBottom: tab===t?"2px solid #d4883a":"2px solid transparent",
+              textTransform:"uppercase", letterSpacing:0.5, cursor:"pointer", fontFamily:"inherit" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── PRACTICE TAB ── */}
+      {tab==="practice" && (
+        <div style={{ padding:16 }}>
+          {/* Prompt card */}
+          {prompt && (
+            <div style={{ background:"white", borderRadius:12, padding:16, marginBottom:12, border:"1px solid #d0c8b8", boxShadow:"0 2px 8px rgba(26,26,46,0.08)" }}>
+              <div style={{ fontSize:10, textTransform:"uppercase", letterSpacing:1, color:"#7a7268", fontWeight:600, marginBottom:5, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span>Zeg deze zin</span>
+                <span style={levelTagStyle(prompt.level)}>{prompt.level}</span>
+              </div>
+              <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:18, lineHeight:1.5, marginBottom:8 }}>{prompt.text}</div>
+              <button onClick={() => setShowHint(h=>!h)}
+                style={{ fontSize:12, color:"#2c5f8a", background:"none", border:"none", cursor:"pointer", padding:0, textDecoration:"underline", fontFamily:"inherit" }}>
+                {showHint?"Verberg vertaling":"Toon vertaling"}
+              </button>
+              {showHint && <div style={{ fontSize:13, color:"#7a7268", fontStyle:"italic", borderTop:"1px solid #d0c8b8", paddingTop:9, marginTop:6 }}>{prompt.translation}</div>}
+            </div>
+          )}
+
+          {/* Mic */}
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, margin:"18px 0" }}>
+            <button
+              onClick={() => speech.speechState==="listening" ? speech.stop() : speech.start()}
+              style={{ width:82, height:82, borderRadius:"50%", border:"none", cursor:"pointer",
+                background:micBg, boxShadow:"0 4px 20px rgba(26,26,46,0.2)",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                transition:"background 0.2s", animation:micAnim, outline:"none" }}>
+              <MicIcon size={32} />
+            </button>
+            <div style={{ fontSize:13, color:"#7a7268", textAlign:"center" }}>
+              <strong style={{ color:"#1a1a2e", display:"block", fontSize:14 }}>
+                { speech.speechState==="requesting" ? "Microfoon activeren…"
+                : speech.speechState==="listening"  ? "Aan het luisteren…"
+                : speech.speechState==="error"      ? "Fout — tik om opnieuw te proberen"
+                : "Tik om te spreken" }
+              </strong>
+              <span style={{ fontSize:12 }}>
+                { speech.speechState==="listening" ? "Tik nogmaals om te stoppen"
+                : speech.speechState==="done"      ? "Tik om opnieuw op te nemen"
+                : "" }
+              </span>
+            </div>
+          </div>
+
+          {/* Error banner */}
+          {speech.speechState==="error" && speech.errorMsg && (
+            <div style={{ background:"rgba(212,136,58,0.12)", border:"1px solid #d4883a", color:"#c47820", borderRadius:8, padding:"9px 13px", fontSize:13, marginBottom:12, lineHeight:1.5 }}>
+              {speech.errorMsg}
+            </div>
+          )}
+
+          {/* Transcript */}
+          <div style={{ background:"white", borderRadius:12, padding:13, border:"1px solid #d0c8b8", minHeight:68, fontSize:15, lineHeight:1.6, marginBottom:11,
+            color: !speech.transcript?"#7a7268":"#1a1a2e", fontStyle: !speech.transcript?"italic":"normal" }}>
+            { speech.transcript || (speech.speechState==="listening"?"…":"Uw uitspraak verschijnt hier…") }
+          </div>
+
+          {/* Feedback */}
+          {feedback && (
+            <div style={{ background:"white", borderRadius:12, border:"1px solid #d0c8b8", overflow:"hidden", marginBottom:12 }} className="fade-in">
+              <div style={{ padding:"10px 15px", background:"#ede8db", borderBottom:"1px solid #d0c8b8", fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:0.5, color:"#7a7268", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span>Feedback</span>
+                <span style={{ fontSize:12, fontWeight:700, padding:"2px 9px", borderRadius:12, color:"white", background:feedback.score>=80?"#27734a":feedback.score>=60?"#d4883a":"#c0392b" }}>{feedback.score}%</span>
+              </div>
+              {feedback.leveledUp && (
+                <div style={{ padding:"11px 15px", borderBottom:"1px solid #d0c8b8", background:"#fdf4e3" }}>
+                  <div style={{ fontSize:10, textTransform:"uppercase", letterSpacing:0.5, fontWeight:700, color:"#2c5f8a", marginBottom:3 }}>🎉 NIVEAU OMHOOG!</div>
+                  <div style={{ fontSize:13 }}>Je bent gestegen naar <strong>{feedback.newLevel}</strong>!</div>
+                </div>
+              )}
+              <div style={{ padding:"11px 15px", borderBottom: feedback.issues.length?"1px solid #d0c8b8":"none" }}>
+                <div style={{ fontSize:10, textTransform:"uppercase", letterSpacing:0.5, fontWeight:700, color:"#2c5f8a", marginBottom:2 }}>+{feedback.xp} XP verdiend</div>
+              </div>
+              {feedback.issues.length===0 ? (
+                <div style={{ padding:"11px 15px" }}>
+                  <div style={{ fontSize:10, textTransform:"uppercase", fontWeight:700, color:"#27734a", marginBottom:2 }}>UITSTEKEND</div>
+                  <div style={{ fontSize:13 }}>Geen fouten gevonden! Goed gedaan!</div>
+                </div>
+              ) : feedback.issues.map((issue,i) => (
+                <div key={i} style={{ padding:"11px 15px", borderBottom: i<feedback.issues.length-1?"1px solid #d0c8b8":"none", fontSize:13, lineHeight:1.5 }}>
+                  <div style={{ fontSize:10, textTransform:"uppercase", letterSpacing:0.5, fontWeight:700, marginBottom:3, color:issue.severity==="error"?"#c0392b":"#d4883a" }}>
+                    {issue.severity==="error"?"FOUT":"LET OP"} · {issue.category.replace(/_/g," ").toUpperCase()}
+                  </div>
+                  <div>{issue.message}</div>
+                  {issue.example && <div style={{ fontFamily:"'DM Mono',monospace", fontSize:12, marginTop:4, padding:"4px 7px", background:"#ede8db", borderRadius:4, borderLeft:"3px solid #27734a" }}>✓ {issue.example}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display:"flex", gap:9 }}>
+            <button onClick={newPrompt} style={{ flex:1, padding:12, borderRadius:10, border:"1px solid #d0c8b8", background:"#ede8db", color:"#1a1a2e", fontSize:14, fontWeight:500, cursor:"pointer", fontFamily:"inherit" }}>
+              Nieuwe zin
+            </button>
+            {speech.speechState==="done" && speech.transcript && !feedback && (
+              <button onClick={checkSpeech} style={{ flex:1, padding:12, borderRadius:10, border:"none", background:"#d4883a", color:"white", fontSize:14, fontWeight:500, cursor:"pointer", fontFamily:"inherit" }}>
+                Controleer ✓
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── EXERCISES TAB ── */}
+      {tab==="exercises" && (
+        <div style={{ padding:16 }}>
+          <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:19, marginBottom:3 }}>Gerichte oefeningen</div>
+          <div style={{ fontSize:13, color:"#7a7268", marginBottom:13 }}>Afgestemd op jouw zwakke punten</div>
+          {renderCats.flatMap(cat =>
+            (EXERCISES[cat]||[])
+              .filter(e => !e.lang || e.lang===lang || e.lang==="nl-NL")
+              .slice(0,2)
+              .map((ex,i) => <ExerciseCard key={`${cat}_${i}`} ex={ex} catLabel={cat.replace(/_/g," ")} />)
+          )}
+          {renderCats.every(c=>!(EXERCISES[c]||[]).length) && (
+            <div style={{ textAlign:"center", padding:"28px 14px", color:"#7a7268" }}>
+              <div style={{ fontSize:40, marginBottom:8 }}>🎯</div>
+              <p style={{ fontSize:13 }}>Doe eerst spreekoefeningen.<br/>Opdrachten worden afgestemd op jouw fouten.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PROGRESS TAB ── */}
+      {tab==="progress" && (
+        <div style={{ padding:16 }}>
+          <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:19, marginBottom:12 }}>Jouw voortgang</div>
+
+          {/* CEFR journey */}
+          <div style={{ background:"white", borderRadius:12, padding:16, marginBottom:12, border:"1px solid #d0c8b8" }}>
+            <div style={{ fontSize:11, textTransform:"uppercase", letterSpacing:0.8, color:"#7a7268", fontWeight:600, marginBottom:10 }}>CEFR-niveaureis</div>
+            <div style={{ display:"flex", borderRadius:8, overflow:"hidden", marginBottom:8 }}>
+              {CEFR_LEVELS.map((l,i) => (
+                <div key={l} style={{ flex:1, padding:"8px 3px", textAlign:"center", fontSize:12, fontWeight:700,
+                  background:CEFR_COLORS[l], color:l==="B1"?"#1a1a2e":"white",
+                  opacity: i<=lidx?1:0.28,
+                  boxShadow: l===level?"inset 0 0 0 2px rgba(255,255,255,0.65)":"none" }}>
+                  {l}
+                </div>
+              ))}
+            </div>
+            <div style={{ height:6, background:"#ede8db", borderRadius:3, overflow:"hidden", margin:"7px 0 4px" }}>
+              <div style={{ height:"100%", width:xpPct+"%", background:CEFR_COLORS[level], borderRadius:3, transition:"width 0.6s" }} />
+            </div>
+            <div style={{ fontSize:12, color:"#7a7268", display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+              <span>{xpInto} XP</span>
+              <span>{nextLvl ? `${xpNeed-xpInto} XP naar ${nextLvl}` : "Max niveau! 🎉"}</span>
+            </div>
+            <div style={{ fontSize:13, color:"#7a7268", lineHeight:1.5 }}>{CEFR_DESCS[level]}</div>
+          </div>
+
+          {/* Stats */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:9, marginBottom:14 }}>
+            {[["Sessies",state.sessions||0],["Nauwkeurigheid",state.sessions>0?Math.round(state.totalScore/state.sessions)+"%":"—"],["Reeks 🔥",state.streak||0],["Totaal XP",xp]].map(([label,val]) => (
+              <div key={label} style={{ background:"white", borderRadius:12, padding:13, border:"1px solid #d0c8b8", textAlign:"center" }}>
+                <div style={{ fontFamily:"'Playfair Display',Georgia,serif", fontSize:28, fontWeight:700, lineHeight:1, marginBottom:3 }}>{val}</div>
+                <div style={{ fontSize:12, color:"#7a7268" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Weaknesses */}
+          <div style={{ fontSize:11, textTransform:"uppercase", letterSpacing:0.8, color:"#7a7268", fontWeight:600, marginBottom:8 }}>Zwakke punten</div>
+          {weakEntries.length===0 ? (
+            <div style={{ fontSize:13, color:"#7a7268", marginBottom:12 }}>Nog geen data — begin met oefenen!</div>
+          ) : weakEntries.map(([cat,d]) => {
+            const pct = Math.round((d.count/weakEntries[0][1].count)*100);
+            return (
+              <div key={cat} style={{ background:"white", borderRadius:10, padding:"12px 13px", border:"1px solid #d0c8b8", marginBottom:7, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:500 }}>{cat.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase())}</div>
+                  <div style={{ fontSize:12, color:"#7a7268", marginTop:2 }}>{d.count} fout{d.count!==1?"en":""} gedetecteerd</div>
+                </div>
+                <div style={{ width:70, height:5, background:"#ede8db", borderRadius:3, overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:pct+"%", background:pct>70?"#c0392b":pct<30?"#27734a":"#d4883a", borderRadius:3, transition:"width 0.5s" }} />
+                </div>
+              </div>
+            );
+          })}
+
+          {/* History */}
+          <div style={{ fontSize:11, textTransform:"uppercase", letterSpacing:0.8, color:"#7a7268", fontWeight:600, marginTop:14, marginBottom:8 }}>Recente sessies</div>
+          {(state.history||[]).length===0 ? (
+            <div style={{ fontSize:13, color:"#7a7268" }}>Nog geen sessies.</div>
+          ) : (state.history||[]).slice(0,10).map((h,i) => (
+            <div key={i} style={{ background:"white", borderRadius:10, border:"1px solid #d0c8b8", padding:"11px 13px", marginBottom:7, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div>
+                <div style={{ fontSize:12, color:"#7a7268" }}>{h.date} · {h.lang}</div>
+                <div style={{ fontSize:12, color:"#7a7268", marginTop:1 }}>{h.errors} fout{h.errors!==1?"en":""} · +{h.xp} XP</div>
+              </div>
+              <div style={{ fontSize:14, fontWeight:600, color:h.score>=80?"#27734a":h.score>=60?"#d4883a":"#c0392b" }}>{h.score}%</div>
+            </div>
+          ))}
+
+          <button onClick={() => { if(window.confirm("Alle voortgang verwijderen? Dit kan niet ongedaan worden gemaakt.")) { save({...defaultState(), lang}); } }}
+            style={{ width:"100%", padding:12, borderRadius:10, border:"1px solid #d0c8b8", background:"#ede8db", color:"#7a7268", fontSize:13, cursor:"pointer", fontFamily:"inherit", marginTop:10 }}>
+            Voortgang resetten
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

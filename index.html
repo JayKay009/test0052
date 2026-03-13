@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>LinguaCoach</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700&family=DM+Mono:wght@400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -73,7 +73,7 @@ nav { display: flex; background: #ede8db; border-bottom: 1px solid #d0c8b8; flex
 @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
 
 /* ── INPUT BAR ── */
-#inputBar { flex-shrink: 0; background: white; border-top: 1px solid #d0c8b8; padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+#inputBar { flex-shrink: 0; background: white; border-top: 1px solid #d0c8b8; padding: 10px 14px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 10px; }
 #inputBar.disabled { opacity: 0.5; pointer-events: none; }
 .mic-btn { width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.2s; outline: none; }
 .mic-btn.idle      { background: #1a1a2e; }
@@ -87,7 +87,7 @@ nav { display: flex; background: #ede8db; border-bottom: 1px solid #d0c8b8; flex
 @keyframes micpulse { 0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,0.4)} 50%{box-shadow:0 0 0 14px rgba(192,57,43,0)} }
 
 /* ── END BAR ── */
-#endBar { flex-shrink: 0; background: white; border-top: 1px solid #d0c8b8; padding: 10px 14px; }
+#endBar { flex-shrink: 0; background: white; border-top: 1px solid #d0c8b8; padding: 10px 14px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 
 /* ── TOPIC PICKER ── */
 .topic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 14px; }
@@ -591,18 +591,25 @@ async function endConversation() {
 function buildAnalysisPrompt(transcript) {
   const lang = LANG_NAMES[selectedLang];
   return {
-    system: `You are an expert ${lang} language teacher. Analyse a learner's conversation transcript for grammatical and linguistic errors. Return ONLY valid JSON, no other text.`,
+    system: `You are an expert ${lang} language teacher. Analyse a learner's spoken conversation transcript for grammatical and linguistic errors. Return ONLY valid JSON, no other text.`,
     user: `Analyse this ${lang} learner's transcript and identify language errors.
+
+IMPORTANT CONTEXT: This transcript was produced by speech-to-text software, not typed by the learner. Therefore you MUST ignore and never flag:
+- Missing or incorrect capitalisation (e.g. lowercase at start of sentence)
+- Missing or incorrect punctuation (e.g. no full stop, missing comma)
+- Spelling variations that are clearly speech recognition artefacts
+
+Only flag genuine spoken language errors: wrong grammar, incorrect verb forms, wrong word order, wrong articles, incorrect prepositions, wrong vocabulary choice, etc.
 
 TRANSCRIPT:
 ${transcript}
 
 Return this exact JSON structure:
 {
-  "summary": "2-3 sentence overall assessment of the learner's level and performance",
+  "summary": "2-3 sentence overall assessment of the learner's spoken level and performance",
   "errors": [
     {
-      "category": "category name (e.g. word order, verb conjugation, articles, prepositions, vocabulary, spelling, sentence structure)",
+      "category": "category name (e.g. word order, verb conjugation, articles, prepositions, vocabulary, sentence structure)",
       "severity": "error" or "warning",
       "original": "the exact phrase the learner used",
       "correction": "the correct version",

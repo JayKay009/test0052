@@ -180,7 +180,7 @@ nav { display: flex; background: #ede8db; border-bottom: 1px solid #d0c8b8; flex
 <div id="app" style="display:none">
 
   <header>
-    <div class="logo">Lingua<span>Coach</span> <span style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:400;color:rgba(245,240,232,0.35);letter-spacing:0.3px;vertical-align:middle;">v1.4</span></div>
+    <div class="logo">Lingua<span>Coach</span> <span style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:400;color:rgba(245,240,232,0.35);letter-spacing:0.3px;vertical-align:middle;">v1.5</span></div>
     <div class="header-right">
       <select class="lang-select" id="langSelect" onchange="onLangChange()">
         <option value="nl-NL">🇳🇱 Nederlands</option>
@@ -227,18 +227,14 @@ nav { display: flex; background: #ede8db; border-bottom: 1px solid #d0c8b8; flex
       </div>
       <div id="inputBar">
         <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-          <button class="mic-btn idle" id="micBtn"
-            onpointerdown="micPressStart(event)"
-            onpointerup="micPressEnd(event)"
-            onpointercancel="micPressEnd(event)"
-            oncontextmenu="return false">
+          <button class="mic-btn idle" id="micBtn" onclick="toggleMic()">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
               <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-6.5 9.5A6.5 6.5 0 0 0 12 17a6.5 6.5 0 0 0 6.5-6.5H20a8 8 0 0 1-7 7.938V21h-2v-2.562A8 8 0 0 1 4 10.5h1.5z"/>
             </svg>
           </button>
-          <div class="mic-hint" id="micHint">Ingedrukt houden</div>
+          <div class="mic-hint" id="micHint">Tik om op te nemen</div>
         </div>
-        <textarea class="text-input" id="textInput" placeholder="Houd microfoon ingedrukt om op te nemen, of typ hier…" rows="1"
+        <textarea class="text-input" id="textInput" placeholder="Of typ hier…" rows="1"
           oninput="autoResize(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendText();}"></textarea>
         <button class="send-btn" onclick="sendText()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
@@ -911,21 +907,31 @@ function resetProgress() {
 }
 
 // ════════════════════════════════════════════
-// SPEECH RECOGNITION — hold to record
+// SPEECH RECOGNITION — tap to start, tap to stop
 // ════════════════════════════════════════════
 let recognition = null;
 let isListening = false;
 let permissionGranted = false;
-let accumulatedTranscript = "";
 
 function setMicState(state) {
-  const btn = document.getElementById("micBtn");
+  const btn  = document.getElementById("micBtn");
+  const hint = document.getElementById("micHint");
   btn.className = "mic-btn " + state;
+  if (hint) {
+    hint.textContent = state === "listening" ? "Tik om te stoppen"
+                     : state === "requesting" ? "Activeren…"
+                     : "Tik om op te nemen";
+  }
 }
 
-async function micPressStart(e) {
-  e.preventDefault();
-  if (isListening) return;
+async function toggleMic() {
+  // Stop if already listening
+  if (isListening) {
+    if (recognition) { try { recognition.stop(); } catch(_){} recognition = null; }
+    isListening = false;
+    setMicState("idle");
+    return;
+  }
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
@@ -941,104 +947,51 @@ async function micPressStart(e) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(t => t.stop());
       permissionGranted = true;
-    } catch(err) {
+    } catch(e) {
       setMicState("idle");
       appendMsg("system", "🎤 Microfoon geweigerd. Tik op het slotje in de adresbalk en sta microfoon toe.");
       return;
     }
   }
 
-  // Clear previous transcript and start fresh
-  accumulatedTranscript = "";
-  document.getElementById("textInput").value = "";
-  autoResize(document.getElementById("textInput"));
-
+  // Fresh instance every time
   recognition = new SR();
   recognition.lang = selectedLang;
-  recognition.continuous = true;      // never auto-stop mid-sentence
+  recognition.continuous = false;
   recognition.interimResults = true;
 
-  recognition.onstart = () => {
-    isListening = true;
-    setMicState("listening");
-    const hint = document.getElementById("micHint");
-    if (hint) hint.textContent = "Loslaten om te stoppen";
-  };
+  recognition.onstart = () => { isListening = true; setMicState("listening"); };
 
   recognition.onresult = (e) => {
-    let interim = "";
-    // Rebuild full transcript from all results
-    for (let i = 0; i < e.results.length; i++) {
-      if (e.results[i].isFinal) {
-        accumulatedTranscript += e.results[i][0].transcript + " ";
-      } else {
-        interim += e.results[i][0].transcript;
-      }
+    let final = "", interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final  += e.results[i][0].transcript;
+      else                       interim += e.results[i][0].transcript;
     }
-    const display = (accumulatedTranscript + interim).trim();
-    document.getElementById("textInput").value = display;
+    document.getElementById("textInput").value = (final || interim).trim();
     autoResize(document.getElementById("textInput"));
+    if (final) { try { recognition.stop(); } catch(_){} }
   };
 
   recognition.onerror = (e) => {
-    if (e.error === "aborted") return;
-    recognition = null; isListening = false; setMicState("idle");
+    recognition = null; isListening = false;
+    if (e.error === "aborted") { setMicState("idle"); return; }
     const msgs = {
       "not-allowed": "🎤 Microfoon geweigerd. Controleer de browserinstellingen.",
-      "no-speech":   "",   // silence while holding is fine, don't show error
+      "no-speech":   "Geen spraak gedetecteerd — probeer opnieuw.",
       "network":     "Netwerkfout — spraakherkenning vereist internet.",
     };
-    const msg = msgs[e.error];
-    if (msg === undefined) appendMsg("system", "Spraakfout: " + e.error);
+    setMicState("idle");
+    if (msgs[e.error]) appendMsg("system", msgs[e.error]);
   };
 
   recognition.onend = () => {
-    // If still holding, restart — browser sometimes stops recognition mid-hold
-    if (isListening) {
-      try {
-        recognition = new SR();
-        recognition.lang = selectedLang;
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.onstart  = () => {};
-        recognition.onresult = (e) => {
-          let interim = "";
-          for (let i = 0; i < e.results.length; i++) {
-            if (e.results[i].isFinal) accumulatedTranscript += e.results[i][0].transcript + " ";
-            else interim += e.results[i][0].transcript;
-          }
-          const display = (accumulatedTranscript + interim).trim();
-          document.getElementById("textInput").value = display;
-          autoResize(document.getElementById("textInput"));
-        };
-        recognition.onerror = () => {};
-        recognition.onend   = arguments.callee; // re-attach same onend
-        recognition.start();
-      } catch(_) {
-        isListening = false;
-        setMicState(accumulatedTranscript.trim() ? "done" : "idle");
-      }
-      return;
-    }
-    recognition = null;
-    setMicState(accumulatedTranscript.trim() ? "done" : "idle");
+    recognition = null; isListening = false;
+    setMicState(document.getElementById("textInput").value.trim() ? "done" : "idle");
   };
 
   try { recognition.start(); }
-  catch(err) { recognition = null; isListening = false; setMicState("idle"); }
-}
-
-function micPressEnd(e) {
-  e.preventDefault();
-  if (!isListening) return;
-  isListening = false;
-  if (recognition) {
-    try { recognition.stop(); } catch(_) {}
-    recognition = null;
-  }
-  const hint = document.getElementById("micHint");
-  if (hint) hint.textContent = "Ingedrukt houden";
-  setMicState(accumulatedTranscript.trim() ? "done" : "idle");
+  catch(e) { recognition = null; isListening = false; setMicState("idle"); }
 }
 
 // ════════════════════════════════════════════
